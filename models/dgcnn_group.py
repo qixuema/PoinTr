@@ -69,7 +69,7 @@ class DGCNN_Grouper(nn.Module):
                                    )
 
     
-    @staticmethod
+    @staticmethod # 以上实例声明了静态方法 f，从而可以实现实例化使用 C().f()，当然也可以不实例化调用该方法 C.f()
     def fps_downsample(coor, x, num_group):
         xyz = coor.transpose(1, 2).contiguous() # b, n, 3
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, num_group)

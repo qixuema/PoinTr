@@ -15,7 +15,7 @@ from utils.logger import *
 # References:
 # - https://github.com/hzxie/GRNet/blob/master/utils/data_loaders.py
 
-@DATASETS.register_module()
+@DATASETS.register_module() # 类 装饰器
 class PCN(data.Dataset):
     # def __init__(self, data_root, subset, class_choice = None):
     def __init__(self, config):

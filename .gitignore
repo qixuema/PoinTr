@@ -5,6 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
+*.o
 
 # Distribution / packaging
 .Python
@@ -26,6 +27,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.zip
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -143,6 +145,7 @@ data/KITTI/tracklets
 data/PCN/train
 data/PCN/test
 data/PCN/val
+data/PCN
 upload*
 KITTI_VIS/
 models/pointrvrc/mm3d_pn2

@@ -9,27 +9,32 @@ import numpy as np
 # from knn_cuda import KNN
 # knn = KNN(k=8, transpose_mode=False)
 
-def knn_point(nsample, xyz, new_xyz):
+def knn_point(nsample, xyz, query_xyz):
     """
     Input:
         nsample: max sample number in local region
         xyz: all points, [B, N, C]
-        new_xyz: query points, [B, S, C]
+        query_xyz: query points, [B, S, C]
     Return:
         group_idx: grouped points index, [B, S, nsample]
     """
-    sqrdists = square_distance(new_xyz, xyz)
+    sqrdists = square_distance(query_xyz, xyz)
     _, group_idx = torch.topk(sqrdists, nsample, dim = -1, largest=False, sorted=False)
     return group_idx
 
 def square_distance(src, dst):
     """
+    计算两组点集中, 所有点, 两两之间的距离平方;
     Calculate Euclid distance between each two points.
-    src^T * dst = xn * xm + yn * ym + zn * zm;
-    sum(src^2, dim=-1) = xn*xn + yn*yn + zn*zn;
-    sum(dst^2, dim=-1) = xm*xm + ym*ym + zm*zm;
-    dist = (xn - xm)^2 + (yn - ym)^2 + (zn - zm)^2
-         = sum(src**2,dim=-1)+sum(dst**2,dim=-1)-2*src^T*dst
+    because: 
+        dist = (xs - xd)^2 + (ys - yd)^2 + (zs - zd)^2
+    and:
+        src^T * dst = xs * xd + ys * yd + zs * zd;
+        sum(src**2, dim=-1) = xs*xs + ys*ys + zs*zs;
+        sum(dst**2, dim=-1) = xd*xd + yd*yd + zd*zd;
+    therefore:
+        dist = sum(src**2,dim=-1) + sum(dst**2,dim=-1) - 2*src^T*dst
+    
     Input:
         src: source points, [B, N, C]
         dst: target points, [B, M, C]
@@ -44,18 +49,28 @@ def square_distance(src, dst):
     return dist   
 
 def get_knn_index(coor_q, coor_k=None):
+    """从 coor_k 中获取 coor_q 的 k 个近邻的索引, 默认 k = 8; 作者自己手写了一个 knn 算法
+
+    Args:
+        coor_q (torch.tensor([bs, 3, np_q])): query points
+        coor_k (torch.tensor([bs, 3, np_k]), optional): 被 query 的 points. Defaults to None.
+
+    Returns:
+        torch.tensor([bs*k*np_q]): 返回 query points 的索引, 并展开为 1 维的形式
+    """
     coor_k = coor_k if coor_k is not None else coor_q
     # coor: bs, 3, np
     batch_size, _, num_points = coor_q.size()
     num_points_k = coor_k.size(2)
 
     with torch.no_grad():
-#         _, idx = knn(coor_k, coor_q)  # bs k np
-        idx = knn_point(8, coor_k.transpose(-1, -2).contiguous(), coor_q.transpose(-1, -2).contiguous()) # B G M
+        # _, idx = knn(coor_k, coor_q)  # bs k np
+        k = 8
+        idx = knn_point(k, coor_k.transpose(-1, -2).contiguous(), coor_q.transpose(-1, -2).contiguous()) # B G M
         idx = idx.transpose(-1, -2).contiguous()
-        idx_base = torch.arange(0, batch_size, device=coor_q.device).view(-1, 1, 1) * num_points_k
+        idx_base = torch.arange(0, batch_size, device=coor_q.device).view(-1, 1, 1) * num_points_k # 这里为什么要加一个 idx_base, 也就是为什么要把第 i 个 batch 的点的 idx 加上 i* num_points_k 呢？
         idx = idx + idx_base
-        idx = idx.view(-1)
+        idx = idx.view(-1) # 这里又为什么把所有 batch 的 idx 展开成 1 行呢？
     
     return idx  # bs*k*np
 
