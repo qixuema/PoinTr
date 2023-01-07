@@ -99,7 +99,7 @@ def run_net(args, config, train_writer=None, val_writer=None):
             
             sparse_loss, dense_loss = base_model.module.get_loss(ret, gt)
          
-            _loss = sparse_loss + dense_loss 
+            _loss = sparse_loss + dense_loss # 两种损失进行相加
             _loss.backward()
 
             # forward

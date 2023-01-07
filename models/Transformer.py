@@ -75,17 +75,27 @@ def get_knn_index(coor_q, coor_k=None):
     return idx  # bs*k*np
 
 def get_graph_feature(x, knn_index, x_q=None):
+    """合并相对位置特征与绝对位置特征
 
-        #x: bs, np, c, knn_index: bs*k*np
-        k = 8
-        batch_size, num_points, num_dims = x.size()
-        num_query = x_q.size(1) if x_q is not None else num_points
-        feature = x.view(batch_size * num_points, num_dims)[knn_index, :]
-        feature = feature.view(batch_size, k, num_query, num_dims)
-        x = x_q if x_q is not None else x
-        x = x.view(batch_size, 1, num_query, num_dims).expand(-1, k, -1, -1)
-        feature = torch.cat((feature - x, x), dim=-1)
-        return feature  # b k np c
+    Args:
+        x (torch.tensor([bs, np, c])): 绝对位置特征
+        knn_index (torch.tensor([bs*k*np])): knn 索引
+        x_q (_type_, optional): _description_. Defaults to None.
+
+    Returns:
+        torch.tensor([bs, k, np, c]): "相对位置特征"和"绝对位置特征"合并之后的特征
+    """
+    # x: bs, np, c 
+    # knn_index: bs*k*np
+    k = 8
+    batch_size, num_points, num_dims = x.size()
+    num_query = x_q.size(1) if x_q is not None else num_points
+    feature = x.view(batch_size * num_points, num_dims)[knn_index, :]
+    feature = feature.view(batch_size, k, num_query, num_dims)
+    x = x_q if x_q is not None else x
+    x = x.view(batch_size, 1, num_query, num_dims).expand(-1, k, -1, -1)
+    feature = torch.cat((feature - x, x), dim=-1) # feature - x 为相对位置特征, x 为绝对位置特征
+    return feature  # b k np c
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -133,8 +143,6 @@ class Attention(nn.Module):
         x = self.proj_drop(x)
         return x
 
-
-
 class CrossAttention(nn.Module):
     def __init__(self, dim, out_dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
         super().__init__()
@@ -171,7 +179,6 @@ class CrossAttention(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
-
 
 class DecoderBlock(nn.Module):
     def __init__(self, dim, num_heads, dim_q = None, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
@@ -236,7 +243,7 @@ class DecoderBlock(nn.Module):
         q = q + self.drop_path(self.mlp(self.norm2(q)))
         return q
 
-
+# transformer block
 class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
@@ -264,18 +271,16 @@ class Block(nn.Module):
         norm_x = self.norm1(x)
         x_1 = self.attn(norm_x)
 
-        if knn_index is not None:
-            knn_f = get_graph_feature(norm_x, knn_index)
-            knn_f = self.knn_map(knn_f)
+        if knn_index is not None: # 第一层几何感知
+            knn_f = get_graph_feature(norm_x, knn_index) # 实际上就是合并相对位置和绝对位置特征（局部和全局）
+            knn_f = self.knn_map(knn_f) # 线性映射
             knn_f = knn_f.max(dim=1, keepdim=False)[0]
-            x_1 = torch.cat([x_1, knn_f], dim=-1)
-            x_1 = self.merge_map(x_1)
+            x_1 = torch.cat([x_1, knn_f], dim=-1) # 将位置与特征进行合并
+            x_1 = self.merge_map(x_1) # 再映射回原来的维度
         
         x = x + self.drop_path(x_1)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
-
-
 
 class PCTransformer(nn.Module):
     """ Vision Transformer with support for point cloud completion
@@ -334,6 +339,8 @@ class PCTransformer(nn.Module):
         )
 
         self.num_query = num_query
+        
+        # 用来预测输入到解码器的初始位置序列
         self.coarse_pred = nn.Sequential(
             nn.Linear(1024, 1024),
             nn.ReLU(inplace=True),
@@ -373,7 +380,7 @@ class PCTransformer(nn.Module):
             nn.init.constant_(m.weight.data, 1)
             nn.init.constant_(m.bias.data, 0)
 
-    def pos_encoding_sin_wave(self, coor):
+    def pos_encoding_sin_wave(self, coor): # 这里是作者尝试的工作，在最终版本并没有使用
         # ref to https://arxiv.org/pdf/2003.08934v2.pdf
         D = 64 #
         # normal the coor into [-1, 1], batch wise
@@ -395,25 +402,25 @@ class PCTransformer(nn.Module):
         # pos = self.pos_embed_wave(x)
         return pos
 
-    def forward(self, inpc):
+    def forward(self, in_pc):
         '''
-            inpc : input incomplete point cloud with shape B N(2048) C(3)
+            in_pc : input incomplete point cloud with shape B N(2048) C(3)
         '''
         # build point proxy
-        bs = inpc.size(0)
-        coor, f = self.grouper(inpc.transpose(1,2).contiguous()) 
-        knn_index = get_knn_index(coor)
+        bs = in_pc.size(0)
+        coor, f = self.grouper(in_pc.transpose(1,2).contiguous()) # 分别得到中心点坐标及中心点特征
+        knn_index = get_knn_index(coor) # NOTE: 这里 knn_index 的 shape is [bs*8*num_q], 是一个 1 维 tensor, knn 是为了几何感知
         # NOTE: try to use a sin wave  coor B 3 N, change the pos_embed input dim
         # pos = self.pos_encoding_sin_wave(coor).transpose(1,2)
-        pos =  self.pos_embed(coor).transpose(1,2)
-        x = self.input_proj(f).transpose(1,2)
+        pos =  self.pos_embed(coor).transpose(1,2) # 通过 MLP 对位置编码
+        x = self.input_proj(f).transpose(1,2) # 将特征通过一个 MLP, 得到新的特征 x
         # cls_pos = self.cls_pos.expand(bs, -1, -1)
         # cls_token = self.cls_pos.expand(bs, -1, -1)
         # x = torch.cat([cls_token, x], dim=1)
         # pos = torch.cat([cls_pos, pos], dim=1)
         # encoder
         for i, blk in enumerate(self.encoder):
-            if i < self.knn_layer:
+            if i < self.knn_layer: # 作者默认 self.knn_layer = 1, 所以关于 knn 的网络层，只有一层
                 x = blk(x + pos, knn_index)   # B N C
             else:
                 x = blk(x + pos)
@@ -423,15 +430,19 @@ class PCTransformer(nn.Module):
         global_feature = self.increase_dim(x.transpose(1,2)) # B 1024 N 
         global_feature = torch.max(global_feature, dim=-1)[0] # B 1024
 
+        # 预测序列的位置特征
         coarse_point_cloud = self.coarse_pred(global_feature).reshape(bs, -1, 3)  #  B M C(3)
 
+        # 用于解码器第一层几何感知
         new_knn_index = get_knn_index(coarse_point_cloud.transpose(1, 2).contiguous())
         cross_knn_index = get_knn_index(coor_k=coor, coor_q=coarse_point_cloud.transpose(1, 2).contiguous())
 
+        # 将全局特征和位置特征合并
         query_feature = torch.cat([
             global_feature.unsqueeze(1).expand(-1, self.num_query, -1), 
             coarse_point_cloud], dim=-1) # B M C+3 
         q = self.mlp_query(query_feature.transpose(1,2)).transpose(1,2) # B M C 
+        
         # decoder
         for i, blk in enumerate(self.decoder):
             if i < self.knn_layer:
@@ -439,5 +450,5 @@ class PCTransformer(nn.Module):
             else:
                 q = blk(q, x)
 
-        return q, coarse_point_cloud
+        return q, coarse_point_cloud # 这部分也要输出
 

@@ -64,7 +64,7 @@ class PoinTr(nn.Module):
         self.trans_dim = config.trans_dim
         self.knn_layer = config.knn_layer
         self.num_pred = config.num_pred
-        self.num_query = config.num_query
+        self.num_query = config.num_query # for PCN_model, num_query = 224
 
         self.fold_step = int(pow(self.num_pred//self.num_query, 0.5) + 0.5)
         self.base_model = PCTransformer(in_chans = 3, embed_dim = self.trans_dim, depth = [6, 8], drop_rate = 0., num_query = self.num_query, knn_layer = self.knn_layer)
@@ -84,11 +84,12 @@ class PoinTr(nn.Module):
         self.loss_func = ChamferDistanceL1()
 
     def get_loss(self, ret, gt):
-        loss_coarse = self.loss_func(ret[0], gt)
-        loss_fine = self.loss_func(ret[1], gt)
+        loss_coarse = self.loss_func(ret[0], gt) # 计算"中心点"与 gt 的 loss
+        loss_fine = self.loss_func(ret[1], gt) # 计算"预测点云"与 gt 的 loss
         return loss_coarse, loss_fine
 
     def forward(self, xyz):
+        # 这里的 base_model 就是 PCTransformer
         q, coarse_point_cloud = self.base_model(xyz) # B M C and B M 3
     
         B, M ,C = q.shape
@@ -96,6 +97,7 @@ class PoinTr(nn.Module):
         global_feature = self.increase_dim(q.transpose(1,2)).transpose(1,2) # B M 1024
         global_feature = torch.max(global_feature, dim=1)[0] # B 1024
 
+        # 将特征合并
         rebuild_feature = torch.cat([
             global_feature.unsqueeze(-2).expand(-1, M, -1),
             q,
@@ -106,7 +108,9 @@ class PoinTr(nn.Module):
         # coarse_point_cloud = self.refine_coarse(rebuild_feature).reshape(B, M, 3)
 
         # NOTE: foldingNet
+        # 将上述合并特征输入 FoldingNet 预测相对位置  
         relative_xyz = self.foldingnet(rebuild_feature).reshape(B, M, 3, -1)    # B M 3 S
+        # 将相对位置变成绝对位置
         rebuild_points = (relative_xyz + coarse_point_cloud.unsqueeze(-1)).transpose(2,3).reshape(B, -1, 3)  # B N 3
 
         # NOTE: fc
@@ -114,10 +118,13 @@ class PoinTr(nn.Module):
         # rebuild_points = (relative_xyz.reshape(B,M,3,-1) + coarse_point_cloud.unsqueeze(-1)).transpose(2,3).reshape(B, -1, 3)
 
         # cat the input
+        # 原始中心点
         inp_sparse = fps(xyz, self.num_query)
+        # 将原始中心点与预测的中心点合并在一起
         coarse_point_cloud = torch.cat([coarse_point_cloud, inp_sparse], dim=1).contiguous()
+        # 和最初所有点合在一起
         rebuild_points = torch.cat([rebuild_points, xyz],dim=1).contiguous()
 
-        ret = (coarse_point_cloud, rebuild_points)
+        ret = (coarse_point_cloud, rebuild_points) # 输出中心点和全部点
         return ret
 
