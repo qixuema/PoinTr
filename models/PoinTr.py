@@ -84,33 +84,33 @@ class PoinTr(nn.Module):
         self.loss_func = ChamferDistanceL1()
 
     def get_loss(self, ret, gt):
-        loss_coarse = self.loss_func(ret[0], gt) # 计算"中心点"与 gt 的 loss
+        loss_coarse = self.loss_func(ret[0], gt) # 计算"中心点"与 gt 的 loss；监督预测中心点的目的是为了让其符合完整真实点云的分布：
         loss_fine = self.loss_func(ret[1], gt) # 计算"预测点云"与 gt 的 loss
         return loss_coarse, loss_fine
 
     def forward(self, xyz):
         # 这里的 base_model 就是 PCTransformer
-        q, coarse_point_cloud = self.base_model(xyz) # B M C and B M 3
+        q, coarse_point_cloud = self.base_model(xyz) # B M C and B M 3 ; [bs, 224, 384], [bs, 224, 3]
     
         B, M ,C = q.shape
 
-        global_feature = self.increase_dim(q.transpose(1,2)).transpose(1,2) # B M 1024
-        global_feature = torch.max(global_feature, dim=1)[0] # B 1024
+        global_feature = self.increase_dim(q.transpose(1,2)).transpose(1,2) # B M 1024, 为了提取 global feature，我们先将 q 升维到1024
+        global_feature = torch.max(global_feature, dim=1)[0] # B 1024，然后使用 max pooling 得到 global feature
 
-        # 将特征合并
+        # 将 q 的 global feature、q 自身以及 coarse_point_cloud 进行合并
         rebuild_feature = torch.cat([
             global_feature.unsqueeze(-2).expand(-1, M, -1),
             q,
-            coarse_point_cloud], dim=-1)  # B M 1027 + C
+            coarse_point_cloud], dim=-1)  # B M 1027 + C [bs, 224, 1411=1024+384+3]
 
-        rebuild_feature = self.reduce_map(rebuild_feature.reshape(B*M, -1)) # BM C
+        rebuild_feature = self.reduce_map(rebuild_feature.reshape(B*M, -1)) # BM C [bs*224, 384]
         # # NOTE: try to rebuild pc
         # coarse_point_cloud = self.refine_coarse(rebuild_feature).reshape(B, M, 3)
 
         # NOTE: foldingNet
         # 将上述合并特征输入 FoldingNet 预测相对位置  
         relative_xyz = self.foldingnet(rebuild_feature).reshape(B, M, 3, -1)    # B M 3 S
-        # 将相对位置变成绝对位置
+        # 将相对位置变成绝对位置，即得到预测的缺失部分的点云
         rebuild_points = (relative_xyz + coarse_point_cloud.unsqueeze(-1)).transpose(2,3).reshape(B, -1, 3)  # B N 3
 
         # NOTE: fc
@@ -120,9 +120,9 @@ class PoinTr(nn.Module):
         # cat the input
         # 原始中心点
         inp_sparse = fps(xyz, self.num_query)
-        # 将原始中心点与预测的中心点合并在一起
+        # 将原始中心点与预测的中心点合并在一起，得到整个物体的中心点
         coarse_point_cloud = torch.cat([coarse_point_cloud, inp_sparse], dim=1).contiguous()
-        # 和最初所有点合在一起
+        # 将预测的残缺部分点云和输入的点云合并在一起
         rebuild_points = torch.cat([rebuild_points, xyz],dim=1).contiguous()
 
         ret = (coarse_point_cloud, rebuild_points) # 输出中心点和全部点

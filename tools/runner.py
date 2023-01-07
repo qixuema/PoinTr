@@ -285,7 +285,7 @@ crop_ratio = {
 def test_net(args, config):
     logger = get_logger(args.log_name)
     print_log('Tester start ... ', logger = logger)
-    _, test_dataloader = builder.dataset_builder(args, config.dataset.test)
+    _, test_dataloader = builder.dataset_builder(args, config.dataset.test) # TODO: 这里需要研究一下怎么采用进行单样本测试
  
     base_model = builder.model_builder(config.model)
     # load checkpoints
@@ -312,7 +312,7 @@ def test(base_model, test_dataloader, ChamferDisL1, ChamferDisL2, args, config, 
     category_metrics = dict()
     n_samples = len(test_dataloader) # bs is 1
 
-    with torch.no_grad():
+    with torch.no_grad(): # taxonomy 分类
         for idx, (taxonomy_ids, model_ids, data) in enumerate(test_dataloader):
             taxonomy_id = taxonomy_ids[0] if isinstance(taxonomy_ids[0], str) else taxonomy_ids[0].item()
             model_id = model_ids[0]
