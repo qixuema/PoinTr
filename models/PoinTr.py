@@ -14,15 +14,15 @@ def fps(pc, num):
 
 
 class Fold(nn.Module):
-    def __init__(self, in_channel , step , hidden_dim = 512):
+    def __init__(self, in_channel , step , hidden_dim = 512): # in_channel=384, step=8, hidden_dim=256
         super().__init__()
 
         self.in_channel = in_channel
         self.step = step
 
-        a = torch.linspace(-1., 1., steps=step, dtype=torch.float).view(1, step).expand(step, step).reshape(1, -1)
-        b = torch.linspace(-1., 1., steps=step, dtype=torch.float).view(step, 1).expand(step, step).reshape(1, -1)
-        self.folding_seed = torch.cat([a, b], dim=0).cuda()
+        a = torch.linspace(-1., 1., steps=step, dtype=torch.float).view(1, step).expand(step, step).reshape(1, -1) # [1, 64]
+        b = torch.linspace(-1., 1., steps=step, dtype=torch.float).view(step, 1).expand(step, step).reshape(1, -1) # 也是 [1, 64], 不过和 a 的排列方式不一样
+        self.folding_seed = torch.cat([a, b], dim=0).cuda() # [2, 64]
 
         self.folding1 = nn.Sequential(
             nn.Conv1d(in_channel + 2, hidden_dim, 1),
@@ -44,16 +44,16 @@ class Fold(nn.Module):
             nn.Conv1d(hidden_dim//2, 3, 1),
         )
 
-    def forward(self, x):
+    def forward(self, x): # x: [bs_in*224, 384]
         num_sample = self.step * self.step
-        bs = x.size(0)
-        features = x.view(bs, self.in_channel, 1).expand(bs, self.in_channel, num_sample)
-        seed = self.folding_seed.view(1, 2, num_sample).expand(bs, 2, num_sample).to(x.device)
+        bs = x.size(0) # bs = bs_in*224
+        features = x.view(bs, self.in_channel, 1).expand(bs, self.in_channel, num_sample) # [bs, 384, 1] expand [bs, 384, 64]
+        seed = self.folding_seed.view(1, 2, num_sample).expand(bs, 2, num_sample).to(x.device) # [1, 2, 64] expand [bs, 2, 64]
 
-        x = torch.cat([seed, features], dim=1)
-        fd1 = self.folding1(x)
-        x = torch.cat([fd1, features], dim=1)
-        fd2 = self.folding2(x)
+        x = torch.cat([seed, features], dim=1) # [bs, 386, 64]
+        fd1 = self.folding1(x)  # [bs, 3, 64]
+        x = torch.cat([fd1, features], dim=1)  # [bs, 387, 64]
+        fd2 = self.folding2(x)  # [bs, 3, 64]
 
         return fd2
 
@@ -61,12 +61,12 @@ class Fold(nn.Module):
 class PoinTr(nn.Module):
     def __init__(self, config, **kwargs):
         super().__init__()
-        self.trans_dim = config.trans_dim
-        self.knn_layer = config.knn_layer
-        self.num_pred = config.num_pred
+        self.trans_dim = config.trans_dim # 384
+        self.knn_layer = config.knn_layer # 1，也就是只用了一层的几何感知
+        self.num_pred = config.num_pred # 14336
         self.num_query = config.num_query # for PCN_model, num_query = 224
 
-        self.fold_step = int(pow(self.num_pred//self.num_query, 0.5) + 0.5)
+        self.fold_step = int(pow(self.num_pred//self.num_query, 0.5) + 0.5) # 向下取整，为 8
         self.base_model = PCTransformer(in_chans = 3, embed_dim = self.trans_dim, depth = [6, 8], drop_rate = 0., num_query = self.num_query, knn_layer = self.knn_layer)
         
         self.foldingnet = Fold(self.trans_dim, step = self.fold_step, hidden_dim = 256)  # rebuild a cluster point
@@ -108,10 +108,10 @@ class PoinTr(nn.Module):
         # coarse_point_cloud = self.refine_coarse(rebuild_feature).reshape(B, M, 3)
 
         # NOTE: foldingNet
-        # 将上述合并特征输入 FoldingNet 预测相对位置  
-        relative_xyz = self.foldingnet(rebuild_feature).reshape(B, M, 3, -1)    # B M 3 S
+        # 将上述合并特征输入 FoldingNet 预测相对位置，每个中心点对应预测 64 个邻近点；另外 foldingnet 真的有这么神奇吗？这部分是单独训练吗？
+        relative_xyz = self.foldingnet(rebuild_feature).reshape(B, M, 3, -1)    # B M 3 S [bs, 224, 3, 64] 这里的作用是，为每一个预测的中心点，生成64个周围点
         # 将相对位置变成绝对位置，即得到预测的缺失部分的点云
-        rebuild_points = (relative_xyz + coarse_point_cloud.unsqueeze(-1)).transpose(2,3).reshape(B, -1, 3)  # B N 3
+        rebuild_points = (relative_xyz + coarse_point_cloud.unsqueeze(-1)).transpose(2,3).reshape(B, -1, 3)  # B N 3 ; [bs, 224*64, 3]
 
         # NOTE: fc
         # relative_xyz = self.refine(rebuild_feature)  # BM 3S
