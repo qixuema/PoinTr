@@ -1,4 +1,4 @@
-from tools import run_net
+from tools import train_net
 from tools import test_net
 from utils import parser, dist_utils, misc
 from utils.logger import *
@@ -62,7 +62,7 @@ def main():
     if args.test:
         test_net(args, config)
     else:
-        run_net(args, config, train_writer, val_writer)
+        train_net(args, config, train_writer, val_writer)
 
 
 if __name__ == '__main__':

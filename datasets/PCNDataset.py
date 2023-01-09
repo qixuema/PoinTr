@@ -19,22 +19,22 @@ from utils.logger import *
 class PCN(data.Dataset):
     # def __init__(self, data_root, subset, class_choice = None):
     def __init__(self, config):
-        self.partial_points_path = config.PARTIAL_POINTS_PATH
-        self.complete_points_path = config.COMPLETE_POINTS_PATH
-        self.category_file = config.CATEGORY_FILE_PATH
-        self.npoints = config.N_POINTS
-        self.subset = config.subset
-        self.cars = config.CARS
+        self.partial_points_path = config.PARTIAL_POINTS_PATH # data/PCN/%s/partial/%s/%s/%02d.pcd
+        self.complete_points_path = config.COMPLETE_POINTS_PATH # data/PCN/%s/complete/%s/%s.pcd
+        self.category_file = config.CATEGORY_FILE_PATH # data/PCN/PCN.json
+        self.npoints = config.N_POINTS # 16384
+        self.subset = config.subset # train/test
+        self.cars = config.CARS # False
 
         # Load the dataset indexing file
         self.dataset_categories = []
         with open(self.category_file) as f:
             self.dataset_categories = json.loads(f.read())
-            if config.CARS:
+            if config.CARS: # False
                 self.dataset_categories = [dc for dc in self.dataset_categories if dc['taxonomy_id'] == '02958343']
 
         self.n_renderings = 8 if self.subset == 'train' else 1
-        self.file_list = self._get_file_list(self.subset, self.n_renderings)
+        self.file_list = self._get_file_list(self.subset, self.n_renderings) # get taxonomy_id + model_id + partial_path + gt_path
         self.transforms = self._get_transforms(self.subset)
 
     def _get_transforms(self, subset):
@@ -72,18 +72,15 @@ class PCN(data.Dataset):
             print_log('Collecting files of Taxonomy [ID=%s, Name=%s]' % (dc['taxonomy_id'], dc['taxonomy_name']), logger='PCNDATASET')
             samples = dc[subset]
 
-            for s in samples:
+            for sample in samples:
                 file_list.append({
-                    'taxonomy_id':
-                    dc['taxonomy_id'],
-                    'model_id':
-                    s,
+                    'taxonomy_id': dc['taxonomy_id'],
+                    'model_id': sample,
                     'partial_path': [
-                        self.partial_points_path % (subset, dc['taxonomy_id'], s, i)
+                        self.partial_points_path % (subset, dc['taxonomy_id'], sample, i) # % 用于字符匹配；因为 self.partial_points_path = "data/PCN/%s/partial/%s/%s/%02d.pcd"
                         for i in range(n_renderings)
                     ],
-                    'gt_path':
-                    self.complete_points_path % (subset, dc['taxonomy_id'], s),
+                    'gt_path': self.complete_points_path % (subset, dc['taxonomy_id'], sample), # self.complete_points_path = "data/PCN/%s/complete/%s/%s.pcd"
                 })
 
         print_log('Complete collecting files of the dataset. Total files: %d' % len(file_list), logger='PCNDATASET')

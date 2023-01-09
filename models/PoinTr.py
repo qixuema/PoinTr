@@ -108,7 +108,7 @@ class PoinTr(nn.Module):
         # coarse_point_cloud = self.refine_coarse(rebuild_feature).reshape(B, M, 3)
 
         # NOTE: foldingNet
-        # 将上述合并特征输入 FoldingNet 预测相对位置，每个中心点对应预测 64 个邻近点；另外 foldingnet 真的有这么神奇吗？这部分是单独训练吗？
+        # 将上述合并特征输入 FoldingNet 预测相对位置，每个中心点对应预测 64 个邻近点；TODO: 另外 foldingnet 真的有这么神奇吗？这部分是单独训练吗？
         relative_xyz = self.foldingnet(rebuild_feature).reshape(B, M, 3, -1)    # B M 3 S [bs, 224, 3, 64] 这里的作用是，为每一个预测的中心点，生成64个周围点
         # 将相对位置变成绝对位置，即得到预测的缺失部分的点云
         rebuild_points = (relative_xyz + coarse_point_cloud.unsqueeze(-1)).transpose(2,3).reshape(B, -1, 3)  # B N 3 ; [bs, 224*64, 3]
