@@ -83,7 +83,8 @@ class PoinTr(nn.Module):
     def build_loss_func(self):
         self.loss_func = ChamferDistanceL1()
 
-    def get_loss(self, ret, gt):
+
+    def get_loss(self, ret, gt, epoch=0):
         loss_coarse = self.loss_func(ret[0], gt) # 计算"中心点"与 gt 的 loss；监督预测中心点的目的是为了让其符合完整真实点云的分布：
         loss_fine = self.loss_func(ret[1], gt) # 计算"预测点云"与 gt 的 loss
         return loss_coarse, loss_fine
