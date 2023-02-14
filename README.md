@@ -63,15 +63,45 @@ bash install.sh
 The solution for a common bug in chamfer distance installation can be found in Issue [#6](https://github.com/yuxumin/PoinTr/issues/6)
 ```
 # PointNet++
-pip install "git+git://github.com/erikwijmans/Pointnet2_PyTorch.git#egg=pointnet2_ops&subdirectory=pointnet2_ops_lib"
+pip install "git+https://github.com/erikwijmans/Pointnet2_PyTorch.git#egg=pointnet2_ops&subdirectory=pointnet2_ops_lib"
 # GPU kNN
 pip install --upgrade https://github.com/unlimblue/KNN_CUDA/releases/download/0.2/KNN_CUDA-0.2-py3-none-any.whl
 ```
+
+Note: If you still get `ModuleNotFoundError: No module named 'gridding'` or something similar then run these steps
+
+```
+    1. cd into extensions/Module (eg extensions/gridding)
+    2. run `python setup.py install`
+```
+
+That will fix the `ModuleNotFoundError`.
 
 
 ### Dataset
 
 The details of our new ***ShapeNet-55/34*** datasets and other existing datasets can be found in [DATASET.md](./DATASET.md).
+
+### Inference
+
+To inference sample(s) with pretrained model
+
+```
+python tools/inference.py \
+${POINTR_CONFIG_FILE} ${POINTR_CHECKPOINT_FILE} \
+[--pc_root <path> or --pc <file>] \
+[--save_vis_img] \
+[--out_pc_root <dir>] \
+```
+
+For example, inference all samples under `demo/` and save the results under `inference_result/`
+```
+python tools/inference.py \
+cfgs/PCN_models/AdaPoinTr.yaml ckpts/AdaPoinTr_PCN.pth \
+--pc_root demo/ \ 
+--save_vis_img  \
+--out_pc_root inference_result/ \
+```
 
 ### Evaluation
 
