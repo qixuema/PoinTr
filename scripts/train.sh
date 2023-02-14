@@ -6,4 +6,6 @@ GPUS=$1  # 将命令行的第一个参数赋值给变量 GPUS
 
 PY_ARGS=${@:2} # 将命令行的第二个及后面的参数赋值给变量 PY_ARGS
 
-CUDA_VISIBLE_DEVICES=${GPUS} python main.py ${PY_ARGS}
+CUDA_VISIBLE_DEVICES=${GPUS} python main.py ${PY_ARGS} \
+    --config ./cfgs/PCN_models/PoinTr.yaml \
+    --exp_name example
