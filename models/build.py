@@ -6,11 +6,11 @@ MODELS = registry.Registry('models')
 
 def build_model_from_cfg(cfg, **kwargs):
     """
-    Build a dataset, defined by `dataset_name`.
+    Build a model, defined by `model_name`.
     Args:
         cfg (eDICT): 
     Returns:
-        Dataset: a constructed dataset specified by dataset_name.
+        Model: a constructed model specified by mdoel_name.
     """
     return MODELS.build(cfg, **kwargs)
 

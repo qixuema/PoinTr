@@ -56,6 +56,7 @@ def inference_single(model, pc_path, args, config, root=None):
         pc_file = pc_path
     # read single point cloud
     pc_ndarray = IO.get(pc_file).astype(np.float32)
+    
     # transform it according to the model 
     if config.dataset.train._base_['NAME'] == 'ShapeNet':
         # normalize it to fit the model on ShapeNet-55/34
@@ -90,6 +91,7 @@ def inference_single(model, pc_path, args, config, root=None):
         os.makedirs(target_path, exist_ok=True)
 
         np.save(os.path.join(target_path, 'fine.npy'), dense_points)
+        IO.save(dense_points, os.path.join(target_path, 'fine.ply'))
         if args.save_vis_img:
             input_img = misc.get_ptcloud_img(pc_ndarray_normalized['input'].numpy())
             dense_img = misc.get_ptcloud_img(dense_points)
@@ -111,6 +113,7 @@ def main():
 
     if args.pc_root != '':
         pc_file_list = os.listdir(args.pc_root)
+        pc_file_list.sort()
         for pc_file in pc_file_list:
             inference_single(base_model, pc_file, args, config, root=args.pc_root)
     else:

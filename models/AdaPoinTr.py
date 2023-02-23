@@ -907,7 +907,7 @@ class AdaPoinTr(nn.Module):
         if self.decoder_type == 'fold':
             self.factor = self.fold_step**2
             self.decode_head = Fold(self.trans_dim, step=self.fold_step, hidden_dim=256)  # rebuild a cluster point
-        else:
+        else: # 在 yaml 文件中，decoder type = fc
             if self.num_points is not None:
                 self.factor = self.num_points // self.num_query
                 assert self.num_points % self.num_query == 0
